@@ -28,16 +28,18 @@
 
 ## explanations
 
-`# initial interface`: define a command line user interface useing "Commands command" to represent "git xxx"
+`# initial interface`: define a command line user interface useing "Commands command" to represent "git xxx"  
 
 `function 'main'`: call different functions according to "command" in "Commands
-command"
+command"  
 
-`class WitRepository`: "worktree" means all the files under wit's control, "witdir" means the location "~/.wit"
-"force" disables all check, which allows tocreate repository even from invalid filesystem locations
+`class WitRepository`: "worktree" means all the files under wit's control, "witdir" means the location "~/.wit"  
+"force" disables all check, which allows tocreate repository even from invalid filesystem locations  
 
-`function 'repo_path'`: path building function
+`function 'repo_path'`: path building function  
 
-`function repo_file/repo_dir`: return and optionally create a path to a file or a directory
+`function repo_file/repo_dir`: return and optionally create a path to a file or a directory  
 
-`function repo_create`: create a repository and create some necessary paths
+`function repo_create`: create a repository and create some necessary paths  
+
+`function repo_find`: find the root of the current repository  

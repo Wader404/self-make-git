@@ -122,6 +122,22 @@ def repo_default_config():
 
     return ret
 
+def repo_find(path=".",required=True):
+    path = os.path.realpath(path)
+
+    if os.path.isdir(os.path.join(path, ".wit")):
+        return WitRepository(path)
+
+    # if we haven't returned, recurse in parent if w
+    parent = os.path.realpath(os.path.join(path, ".."))
+    if parent == path:
+        # bottom case
+        # os.path.join("/", "..") == "/":
+        # if parent==path, then path is root
+        if required:
+            raise Exception("No wit directory")
+        else:
+            return None
 
 # classes
 class WitRepository (object):
