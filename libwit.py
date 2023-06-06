@@ -1,12 +1,12 @@
-import argparse         # parse cmd arguments
-import collections      # for more container types
-import configparser     # read and write a file whose format is used as a configuration file by git
-import hashlib          # git use SHA-1
+import argparse 
+import collections
+import configparser
+import hashlib
 from math import ceil
-import os               # provide some nice filesystem abstraction routines
-import re               # regex
-import sys              # access the actual cmd arguments
-import zlib             # git compresses everything using zlib
+import os
+import re
+import sys
+import zlib
 
 argparser = argparse.ArgumentParser(description="The stupidest conten tracker")
 argparsers = argparser.add_subparsers(title="Commands", dest="command")
@@ -65,7 +65,11 @@ class WitReopsitory (object):
         return os.path.join(repo.witdir, *path)
 
     def repo_file(repo, *path, mkdir=False):
-        """Same as repo_path, but create dirname(*path) if absent. For example, repo_file(r, \"refs\", \"remotes\", \"origin\", \"HEAD\") will create .git/refs/remotes/origin"""
+        """
+        Same as repo_path, but create dirname(*path) if absent. For example,
+        repo_file(r, \"refs\", \"remotes\", \"origin\", \"HEAD\") will create 
+        .git/refs/remotes/origin
+        """
         if repo_dir(repo, *path[:-1], mkdir=mkdir):
             return repo_path(repo, *path)
 
