@@ -1,4 +1,4 @@
 #!/usr/bin/env python3
 
-import libsmgit
-libsmgit.main()
+import libwit
+libwit.main()
