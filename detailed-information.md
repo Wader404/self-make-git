@@ -23,7 +23,8 @@
     url:https://docs.python.org/3/library/sys.html  
 
 7. zlib  
-    url:https://docs.python.org/3/library/zlib.html
+    url:https://docs.python.org/3/library/zlib.html  
+    compress and decompress module compatible with gzip  
 
 
 ## explanations
