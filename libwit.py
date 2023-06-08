@@ -42,7 +42,7 @@ argsp.add_argument("path",
                    default=".",
                    help="Where to create the repository.")
 
-# to get to use "wit cat-file TYPE OBJECT
+# to get to use "wit cat-file TYPE OBJECT"
 argsp = argsubparsers.add_parser("cat-file",
                                  help="Provide content of repository objects")
 
@@ -55,7 +55,7 @@ argsp.add_argument("object",
                    metavar="object",
                    help="The object to display")
 
-# to get to use wit hash-object [-w] [-t TYPE] FILE
+# to get to use "wit hash-object [-w] [-t TYPE] FILE"
 argsp = argsubparsers.add_parser(
     "hash-object",
     help="Compute object ID and optionally creates a blob from a file")
@@ -74,6 +74,27 @@ argsp.add_argument("-w",
 
 argsp.add_argument("path",
                    help="Read object from <file>")
+
+# to get to use "wit log"
+argsp = argsubparsers.add_parser("log", help="Display history of a given commit.")
+argsp.add_argument("commit",
+                   default="HEAD",
+                   nargs="?",
+                   help="Commit to start at.")
+
+# to get to use "wit ls-tree"
+argsp = argsubparsers.add_parser("ls-tree", help="Pretty-print a tree object.")
+argsp.add_argument("object",
+                   help="The object to show.")
+
+# to get to use "wit checkout"
+argsp = argsubparsers.add_parser("checkout", help="Checkout a commit inside of a directory.")
+
+argsp.add_argument("commit",
+                   help="The commit or tree to checkout.")
+
+argsp.add_argument("path",
+                   help="The EMPTY directory to checkout on.")
 
 
 
@@ -94,6 +115,46 @@ def cmd_hash_object(args):
     with open(args.path, "rb") as fd:
         sha = object_hash(fd, args.type.encode(), repo)
         print(sha)
+
+def cmd_log(args):
+    repo = repo_find()
+
+    print("digraph wyaglog{")
+    log_graphviz(repo, object_find(repo, args.commit), set())
+    print("}")
+
+def cmd_ls_tree(args):
+    repo = repo_find()
+    obj = object_read(repo, object_find(repo, args.object, fmt=b'tree'))
+
+    for item in obj.items:
+        print("{0} {1} {2}\t{3}".format(
+            "0" * (6 - len(item.mode)) + item.mode.decode("ascii"),
+            # Git's ls-tree displays the type
+            # of the object pointed to.  We can do that too :)
+            object_read(repo, item.sha).fmt.decode("ascii"),
+            item.sha,
+            item.path.decode("ascii")))
+
+def cmd_checkout(args):
+    repo = repo_find()
+
+    obj = object_read(repo, object_find(repo, args.commit))
+
+    # If the object is a commit, we grab its tree
+    if obj.fmt == b'commit':
+        obj = object_read(repo, obj.kvlm[b'tree'].decode("ascii"))
+
+    # Verify that path is an empty directory
+    if os.path.exists(args.path):
+        if not os.path.isdir(args.path):
+            raise Exception("Not a directory {0}!".format(args.path))
+        if os.listdir(args.path):
+            raise Exception("Not empty {0}!".format(args.path))
+    else:
+        os.makedirs(args.path)
+
+    tree_checkout(repo, obj, os.path.realpath(args.path).encode())
 
 
 
@@ -261,6 +322,150 @@ def object_hash(fd, fmt, repo=None):
 
     return object_write(obj, repo)
 
+# Key-Value List with Message
+def kvlm_parse(raw, start=0, dct=None):
+    if not dct:
+        dct = collections.OrderedDict()
+        # You CANNOT declare the argument as dct=OrderedDict() or all
+        # call to the functions will endlessly grow the same dict.
+
+    # We search for the next space and the next newline.
+    spc = raw.find(b' ', start)
+    nl = raw.find(b'\n', start)
+
+    # If space appears before newline, we have a keyword.
+
+    # Base case
+    # =========
+    # If newline appears first (or there's no space at all, in which
+    # case find returns -1), we assume a blank line.  A blank line
+    # means the remainder of the data is the message.
+    if (spc < 0) or (nl < spc):
+        assert(nl == start)
+        dct[b''] = raw[start+1:]
+        return dct
+
+    # Recursive case
+    # ==============
+    # we read a key-value pair and recurse for the next.
+    key = raw[start:spc]
+
+    # Find the end of the value.  Continuation lines begin with a
+    # space, so we loop until we find a "\n" not followed by a space.
+    end = start
+    while True:
+        end = raw.find(b'\n', end+1)
+        if raw[end+1] != ord(' '): break
+
+    # Grab the value
+    # Also, drop the leading space on continuation lines
+    value = raw[spc+1:end].replace(b'\n ', b'\n')
+
+    # Don't overwrite existing data contents
+    if key in dct:
+        if type(dct[key]) == list:
+            dct[key].append(value)
+        else:
+            dct[key] = [ dct[key], value ]
+    else:
+        dct[key]=value
+
+    return kvlm_parse(raw, start=end+1, dct=dct)
+
+def kvlm_serialize(kvlm):
+    ret = b''
+
+    # Output fields
+    for k in kvlm.keys():
+        # Skip the message itself
+        if k == b'': continue
+        val = kvlm[k]
+        # Normalize to a list
+        if type(val) != list:
+            val = [ val ]
+
+        for v in val:
+            ret += k + b' ' + (v.replace(b'\n', b'\n ')) + b'\n'
+
+    # Append message
+    ret += b'\n' + kvlm[b'']
+
+    return ret
+
+def log_graphviz(repo, sha, seen):
+
+    if sha in seen:
+        return
+    seen.add(sha)
+
+    commit = object_read(repo, sha)
+    assert (commit.fmt==b'commit')
+
+    if not b'parent' in commit.kvlm.keys():
+        # Base case: the initial commit.
+        return
+
+    parents = commit.kvlm[b'parent']
+
+    if type(parents) != list:
+        parents = [ parents ]
+
+    for p in parents:
+        p = p.decode("ascii")
+        print ("c_{0} -> c_{1};".format(sha, p))
+        log_graphviz(repo, p, seen)
+
+def tree_parse_one(raw, start=0):
+    # Find the space terminator of the mode
+    x = raw.find(b' ', start)
+    assert(x-start == 5 or x-start==6)
+
+    # Read the mode
+    mode = raw[start:x]
+
+    # Find the NULL terminator of the path
+    y = raw.find(b'\x00', x)
+    # and read the path
+    path = raw[x+1:y]
+
+    # Read the SHA and convert to a hex string
+    sha = format(int.from_bytes(raw[y+1:y+21], "big"), "040x")
+    return y+21, GitTreeLeaf(mode, path, sha)
+
+def tree_parse(raw):
+    pos = 0
+    max = len(raw)
+    ret = list()
+    while pos < max:
+        pos, data = tree_parse_one(raw, pos)
+        ret.append(data)
+
+    return ret
+
+def tree_serialize(obj):
+    ret = b''
+    for i in obj.items:
+        ret += i.mode
+        ret += b' '
+        ret += i.path
+        ret += b'\x00'
+        sha = int(i.sha, 16)
+        ret += sha.to_bytes(20, byteorder="big")
+    return ret
+
+def tree_checkout(repo, tree, path):
+    for item in tree.items:
+        obj = object_read(repo, item.sha)
+        dest = os.path.join(path, item.path)
+
+        if obj.fmt == b'tree':
+            os.mkdir(dest)
+            tree_checkout(repo, obj, dest)
+        elif obj.fmt == b'blob':
+            with open(dest, 'wb') as f:
+                f.write(obj.blobdata)
+
+
 
 
 
@@ -322,3 +527,27 @@ class GitBlob(GitObject):
 
     def deserialize(self, data):
         self.blobdata = data
+
+class GitCommit(GitObject):
+    fmt=b'commit'
+
+    def deserialize(self, data):
+        self.kvlm = kvlm_parse(data)
+
+    def serialize(self):
+        return kvlm_serialize(self.kvlm)
+
+class GitTreeLeaf (object):
+    def __init__(self, mode, path, sha):
+        self.mode = mode
+        self.path = path
+        self.sha = sha
+
+class GitTree(GitObject):
+    fmt=b'tree'
+
+    def deserialize(self, data):
+        self.items = tree_parse(data)
+
+    def serialize(self):
+        return tree_serialize(self)
